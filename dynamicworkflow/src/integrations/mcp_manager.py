@@ -41,7 +41,13 @@ def build_mcp_server_configs(runtime_config: Dict[str, Any]) -> Dict[str, Dict[s
             or jira_cfg.get("project_url")
             or os.getenv("JIRA_PROJECT_URL", "")
         ).strip()
-        jira_domain = jira_url.replace("https://", "").replace("http://", "").rstrip("/")
+        # Ensure full URL with protocol
+        if jira_url and not jira_url.startswith("http://") and not jira_url.startswith("https://"):
+            full_jira_url = f"https://{jira_url}"
+        else:
+            full_jira_url = jira_url
+
+        jira_domain = full_jira_url.replace("https://", "").replace("http://", "").rstrip("/")
         jira_email = str(
             jira_cfg.get("jira_email")
             or jira_cfg.get("email")
@@ -53,15 +59,29 @@ def build_mcp_server_configs(runtime_config: Dict[str, Any]) -> Dict[str, Dict[s
             or os.getenv("JIRA_API_TOKEN", "")
         ).strip()
 
+        # Configurable Jira MCP package: defaults to "mcp-atlassian", allows fallback to "mcp-jira-server" or custom
+        jira_mcp_pkg = str(
+            jira_cfg.get("mcp_package")
+            or os.getenv("JIRA_MCP_PACKAGE", "mcp-atlassian")
+        ).strip()
+
         if jira_domain and jira_email and jira_token:
             server_configs["jira"] = {
                 "command": "npx",
-                "args": ["-y", "@modelcontextprotocol/server-jira"],
+                "args": ["-y", jira_mcp_pkg],
                 "transport": "stdio",
                 "env": {
-                    "JIRA_DOMAIN": jira_domain,
-                    "JIRA_EMAIL": jira_email,
+                    # Standard variables for mcp-atlassian
+                    "JIRA_URL": full_jira_url,
+                    "JIRA_USERNAME": jira_email,
                     "JIRA_API_TOKEN": jira_token,
+                    "JIRA_PERSONAL_TOKEN": jira_token,  # For Jira Server / Data Center (PAT)
+                    # Compatible fallback variables for other community servers (mcp-jira-server, etc.)
+                    "JIRA_DOMAIN": jira_domain,
+                    "JIRA_HOST": full_jira_url,
+                    "JIRA_BASE_URL": full_jira_url,
+                    "JIRA_EMAIL": jira_email,
+                    "JIRA_USER": jira_email,
                 },
             }
         else:
@@ -105,13 +125,17 @@ async def load_mcp_tools_async(runtime_config: Dict[str, Any]) -> List[BaseTool]
         return []
 
     try:
-        async with MultiServerMCPClient(server_configs) as client:
-            # Per user requirement: No tool filtering applied, all tools returned directly
-            tools = await client.get_tools()
-            logger.info(
-                f"[MCP] Successfully loaded {len(tools)} tools from MCP servers: {list(server_configs.keys())}"
-            )
-            return list(tools)
+        # NOTE: Do NOT use `async with MultiServerMCPClient(server_configs) as client:` here.
+        # Exiting an `async with` block immediately triggers `__aexit__`, which terminates the
+        # underlying stdio child process (npx). This causes subsequent tool invocations by the agent
+        # to fail with BrokenPipeError / closed connection.
+        # Leaving the client instantiated keeps the stdio subprocess alive for agent execution.
+        client = MultiServerMCPClient(server_configs)
+        tools = await client.get_tools()
+        logger.info(
+            f"[MCP] Successfully loaded {len(tools)} tools from MCP servers: {list(server_configs.keys())}"
+        )
+        return list(tools)
     except Exception as exc:
         logger.error(f"[MCP] Failed to load MCP tools: {exc}", exc_info=True)
         return []
