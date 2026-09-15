@@ -59,10 +59,11 @@ def build_mcp_server_configs(runtime_config: Dict[str, Any]) -> Dict[str, Dict[s
             or os.getenv("JIRA_API_TOKEN", "")
         ).strip()
 
-        # Configurable Jira MCP package: defaults to "mcp-atlassian", allows fallback to "mcp-jira-server" or custom
+        # Configurable Jira MCP package: defaults to "@nexus2520/jira-mcp-server" (clean out-of-the-box npx execution),
+        # with fallback to "mcp-jira-server" (for PAT/Data Center) or "mcp-atlassian" (requires jsdom)
         jira_mcp_pkg = str(
             jira_cfg.get("mcp_package")
-            or os.getenv("JIRA_MCP_PACKAGE", "mcp-atlassian")
+            or os.getenv("JIRA_MCP_PACKAGE", "@nexus2520/jira-mcp-server")
         ).strip()
 
         if jira_domain and jira_email and jira_token:

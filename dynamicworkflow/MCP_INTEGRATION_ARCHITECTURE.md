@@ -188,20 +188,19 @@ async def build_mcp_tools_for_session(runtime_config: dict) -> tuple[list, Multi
     
     server_configs = {}
 
-    # Configure Jira MCP Server (User-scoped stdio subprocess via mcp-atlassian)
+    # Configure Jira MCP Server (User-scoped stdio subprocess via @nexus2520/jira-mcp-server)
     if jira_cfg.get("active"):
         jira_url = jira_cfg.get("jira_url", "")
         if jira_url and not jira_url.startswith("http"):
             jira_url = f"https://{jira_url}"
         server_configs["jira"] = {
             "command": "npx",
-            "args": ["-y", "mcp-atlassian"],
+            "args": ["-y", "@nexus2520/jira-mcp-server"],
             "transport": "stdio",
             "env": {
-                "JIRA_URL": jira_url,
-                "JIRA_USERNAME": jira_cfg.get("jira_email", ""),
+                "JIRA_BASE_URL": jira_url,
+                "JIRA_EMAIL": jira_cfg.get("jira_email", ""),
                 "JIRA_API_TOKEN": jira_cfg.get("jira_access_token", ""),
-                "JIRA_PERSONAL_TOKEN": jira_cfg.get("jira_access_token", ""),
             }
         }
 
